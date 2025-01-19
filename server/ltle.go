@@ -8,18 +8,38 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"database/sql"
+	"local_tles/spacetrack"
 
-	"ltle/spacetrack"
-	// "io"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const config_file = "config/ltle.config"
+
+var DB *sql.DB
+func initDB(config *Config) {
+	log.Println("In DB init function")
+	var err error
+	DB, err = sql.Open("sqlite3", config.database)
+	check(err)
+
+	sqlStmt := `
+	CREATE TABLE IF NOT EXISTS todos (
+		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+		title TEXT
+	);`
+
+	_, err = DB.Exec(sqlStmt)
+	check(err)
+	log.Println("End of DB init function")
+}
 
 type Config struct {
 	firstDate         string // or time object?
 	readRate          uint8
 	serverPort        uint16
 	datastore         string
+	database		  string
 	access_spacetrack bool
 }
 
@@ -54,6 +74,8 @@ func parse_config_file(file string) (Config, error) {
 			config.firstDate = items[1]
 		case "DATASTORE":
 			config.datastore = items[1]
+		case "DATABASE":
+			config.database = items[1]
 		case "ACCESS_ST":
 			access_flag, err := strconv.Atoi(items[1])
 			check(err)
@@ -100,7 +122,7 @@ func main() {
 		resp, err := spacetrack.Get_data(client, query_date)
 		check(err)
 		log.Printf("Status code from response is %s", resp.Status)
-		filename := config.datastore + query_date
+		filename := config.datastore + query_date + ".data"
 		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
 		check(err)
 		written, err := io.Copy(file, resp.Body)
@@ -110,6 +132,9 @@ func main() {
 	} else {
 		fmt.Println("Spacetrack access disabled in config file. Not accessing")
 	}
+
+	initDB(&config)
+	defer DB.Close()
 
 	// file_results, err := os.ReadFile("testfile")
 	// check(err)
