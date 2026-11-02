@@ -8,11 +8,12 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"os"
+	"path"
 	"strings"
 )
 
 const (
-	creds_file = "config/ltle.credentials"
+	creds_file = "ltle.credentials"
 )
 
 const (
@@ -20,6 +21,7 @@ const (
 	controller  = "/basicspacedata"
 	gph_class   = "/query/class/gp_history"
 	norad       = "/norad_cat_id"
+	periapsis   = "/PERIAPSIS"
 	metadata    = "/metadata/true"
 	distinct    = "/distinct/true"
 	json_format = "/format/json"
@@ -54,6 +56,7 @@ func build_request(date string) (request string) {
 	request += metadata + distinct
 
 	// time format required for single day range, %20 between date and time
+	// does this miss epochs in the last second??
 	request += "/EPOCH/" + date + " 00:00:00--" + date + " 23:59:59"
 
 	// other additional options
@@ -97,7 +100,10 @@ func parse_credential_file(file string) Credentials {
 }
 
 func read_credentials() Credentials {
-	user_creds := parse_credential_file(creds_file)
+	ltle_config_dir := os.Getenv("LTLE_CONFIG")
+	creds_path := path.Join(ltle_config_dir, creds_file)
+	// check for existence of file here
+	user_creds := parse_credential_file(creds_path)
 	return user_creds
 }
 
@@ -137,7 +143,6 @@ func End_session(client *http.Client) (err error) {
 }
 
 func Get_data(client *http.Client, date string) (response *http.Response, err error) {
-	date = "2025-01-05"
 	request := build_request(date)
 
 	resp, err := client.Get(request)

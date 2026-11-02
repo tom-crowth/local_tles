@@ -1,22 +1,24 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
+	"local_tles/spacetrack"
 	"log"
 	"os"
+	"path"
 	"strconv"
 	"strings"
-	"database/sql"
-	"local_tles/spacetrack"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const config_file = "config/ltle.config"
+const config_file = "ltle.config"
 
 var DB *sql.DB
+
 func initDB(config *Config) {
 	log.Println("In DB init function")
 	var err error
@@ -39,7 +41,7 @@ type Config struct {
 	readRate          uint8
 	serverPort        uint16
 	datastore         string
-	database		  string
+	database          string
 	access_spacetrack bool
 }
 
@@ -95,13 +97,32 @@ func parse_config_file(file string) (Config, error) {
 }
 
 func main() {
+	default_query_date := "2026-10-26"
+	args := os.Args
+	query_date := default_query_date
+	if len(args) == 2 {
+		query_date = args[1]
+	}
+
+	ltle_config_dir := os.Getenv("LTLE_CONFIG")
+	fmt.Println(ltle_config_dir)
+
 	fmt.Println("Reading config file...")
 
-	config, err := parse_config_file(config_file)
+	config_path := path.Join(ltle_config_dir, config_file)
+	// check for existence of file here
+	config, err := parse_config_file(config_path)
 	check(err)
 	fmt.Println(config)
 	jconfig, err := json.Marshal(config)
 	fmt.Println(string(jconfig))
+
+	// check for query date file
+	date_filename := config.datastore + query_date + ".data"
+	if _, err := os.Stat(date_filename); err == nil {
+		log.Printf("File for specified date already exists:\n\t%s", date_filename)
+		return
+	}
 
 	// client, err := spacetrack.Setup_session(creds, creds)
 	if config.access_spacetrack {
@@ -118,17 +139,18 @@ func main() {
 			}
 		}()
 
-		query_date := "2025-01-05"
 		resp, err := spacetrack.Get_data(client, query_date)
 		check(err)
 		log.Printf("Status code from response is %s", resp.Status)
-		filename := config.datastore + query_date + ".data"
-		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+		file, err := os.OpenFile(date_filename, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
 		check(err)
 		written, err := io.Copy(file, resp.Body)
 		check(err)
+		// check if written == 0 here, raise error and delete file if so
+		// we should not get an empty file
+		// The status code should also have been checked already and needs to be 200
 		resp.Body.Close()
-		log.Printf("%d bytes written to %s", written, filename)
+		log.Printf("%d bytes written to %s", written, date_filename)
 	} else {
 		fmt.Println("Spacetrack access disabled in config file. Not accessing")
 	}
